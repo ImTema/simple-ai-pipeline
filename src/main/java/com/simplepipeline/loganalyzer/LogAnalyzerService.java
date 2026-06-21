@@ -5,10 +5,10 @@ import com.simplepipeline.loganalyzer.model.IncidentAnalysis;
 import com.simplepipeline.loganalyzer.model.IncidentSummary;
 import com.simplepipeline.loganalyzer.model.LogSignals;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.util.json.schema.JsonSchemaGenerator;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,12 +17,8 @@ public class LogAnalyzerService {
 
     private static final int MAX_RETRIES = 4;
 
-    private static final Set<String> VALID_FAULT_LAYERS = Set.of("SDK", "Core", "API", "Infrastructure", "External");
-    private static final Set<String> VALID_SEVERITIES = Set.of("low", "medium", "high", "critical");
-    private static final Set<String> VALID_BLAST_RADII = Set.of("single_merchant", "single_adapter", "multi_adapter", "platform_wide");
-    private static final Set<String> VALID_PROBABILITIES = Set.of("likely", "possible", "unlikely");
-    private static final Set<String> VALID_RISKS = Set.of("safe", "caution", "risky");
-    private static final Set<String> KNOWN_TOOLS = Set.of("ELK", "Grafana", "Consul", "Vault", "Redis", "RabbitMQ", "PostgreSQL");
+    private static final String LOG_SIGNALS_SCHEMA = JsonSchemaGenerator.generateForType(LogSignals.class);
+    private static final String INCIDENT_ANALYSIS_SCHEMA = JsonSchemaGenerator.generateForType(IncidentAnalysis.class);
 
     private static final String ARCHITECTURE_CONTEXT = """
             Adapter architecture (3 layers):
@@ -68,11 +64,8 @@ public class LogAnalyzerService {
     private LogSignals parse(String rawLogs) {
         String prompt = """
                 Extract structured signals from the following payment adapter log snippets.
-                Return ONLY valid JSON with exactly these fields:
-                  "incident_id": the incident identifier if visible in the logs (e.g. "INC-201"), or null
-                  "error_types": array of distinct error type strings found in the logs
-                  "affected_components": array of component names (adapters, services, classes) mentioned
-                  "timestamps": array of the first and last timestamps found
+                Return ONLY valid JSON matching this schema:
+                """ + LOG_SIGNALS_SCHEMA + """
 
                 Logs:
                 """ + rawLogs;
@@ -82,8 +75,8 @@ public class LogAnalyzerService {
                 Error: %s
                 Previous response: %s
 
-                Return ONLY valid JSON with fields: incident_id, error_types, affected_components, timestamps.
-                """;
+                Return ONLY valid JSON matching this schema:
+                """ + LOG_SIGNALS_SCHEMA;
 
         return callWithRetry(prompt, correctionTemplate, response ->
                 objectMapper.readValue(extractJson(response), LogSignals.class));
@@ -114,38 +107,11 @@ public class LogAnalyzerService {
 
                 Rules:
                 - category: one short phrase describing the failure class
-                - summary.fault_layer must be exactly one of: SDK, Core, API, Infrastructure, External
-                - summary.severity must be exactly one of: low, medium, high, critical
-                - summary.blast_radius must be exactly one of: single_merchant, single_adapter, multi_adapter, platform_wide
-                - hypotheses: up to 3 entries, each with probability exactly one of: likely, possible, unlikely
-                - each hypothesis must have 2-3 next_steps referencing real tools: ELK, Grafana, Consul, Vault, Redis, RabbitMQ, PostgreSQL
-                - immediate_actions: up to 2 entries, each with risk exactly one of: safe, caution, risky
+                - hypotheses: up to 3 entries ranked by probability
+                - immediate_actions: up to 2 entries
 
-                Return ONLY valid JSON matching this exact structure:
-                {
-                  "incident_id": "string or null",
-                  "category": "string",
-                  "summary": {
-                    "description": "string",
-                    "affected_adapters": ["string"],
-                    "affected_order_types": ["string"],
-                    "fault_layer": "SDK|Core|API|Infrastructure|External",
-                    "severity": "low|medium|high|critical",
-                    "severity_reasoning": "string",
-                    "blast_radius": "single_merchant|single_adapter|multi_adapter|platform_wide"
-                  },
-                  "hypotheses": [
-                    {
-                      "title": "string",
-                      "reasoning": "string",
-                      "probability": "likely|possible|unlikely",
-                      "next_steps": [{"action": "string", "tool": "string", "detail": "string"}]
-                    }
-                  ],
-                  "immediate_actions": [
-                    {"action": "string", "risk": "safe|caution|risky", "reasoning": "string"}
-                  ]
-                }
+                Return ONLY valid JSON matching this schema:
+                """ + INCIDENT_ANALYSIS_SCHEMA + """
 
                 Context:
                 """ + enrichedPrompt;
@@ -154,9 +120,8 @@ public class LogAnalyzerService {
                 Your previous response had validation errors: %s
                 Previous response: %s
 
-                Fix all issues and return ONLY valid JSON with the same structure.
-                Use only the allowed enum values. Tool names must be from: ELK, Grafana, Consul, Vault, Redis, RabbitMQ, PostgreSQL.
-                """;
+                Fix all issues and return ONLY valid JSON matching this schema:
+                """ + INCIDENT_ANALYSIS_SCHEMA;
 
         return callWithRetry(prompt, correctionTemplate, response -> {
             IncidentAnalysis result = objectMapper.readValue(extractJson(response), IncidentAnalysis.class);
@@ -165,9 +130,7 @@ public class LogAnalyzerService {
         });
     }
 
-    // Stage 4: Java reviews enum correctness and assembles final result
-    // If validation fails the retry loop in diagnose() re-runs with a correction prompt.
-    // Here we also fill in incidentId from parsed signals if the LLM left it null.
+    // Stage 4: Java reviews structural correctness and fills incidentId from signals if LLM left it null
     private IncidentAnalysis review(IncidentAnalysis analysis, LogSignals signals) {
         String resolvedId = analysis.incidentId() != null ? analysis.incidentId() : signals.incidentId();
 
@@ -183,40 +146,17 @@ public class LogAnalyzerService {
     }
 
     private void validate(IncidentAnalysis result) {
-        List<String> errors = new java.util.ArrayList<>();
+        var errors = new java.util.ArrayList<String>();
         IncidentSummary s = result.summary();
 
-        if (s == null) { errors.add("summary is null"); }
-        else {
-            if (!VALID_FAULT_LAYERS.contains(s.faultLayer()))
-                errors.add("Invalid fault_layer: " + s.faultLayer());
-            if (!VALID_SEVERITIES.contains(s.severity()))
-                errors.add("Invalid severity: " + s.severity());
-            if (!VALID_BLAST_RADII.contains(s.blastRadius()))
-                errors.add("Invalid blast_radius: " + s.blastRadius());
-        }
+        if (s == null) errors.add("summary is null");
 
         if (result.hypotheses() == null || result.hypotheses().isEmpty())
             errors.add("hypotheses is empty");
         else {
             for (var h : result.hypotheses()) {
-                if (!VALID_PROBABILITIES.contains(h.probability()))
-                    errors.add("Invalid probability: " + h.probability());
                 if (h.nextSteps() == null || h.nextSteps().isEmpty())
                     errors.add("Hypothesis '" + h.title() + "' has no next_steps");
-                else {
-                    for (var step : h.nextSteps()) {
-                        if (!KNOWN_TOOLS.contains(step.tool()))
-                            errors.add("Unknown tool '" + step.tool() + "' in hypothesis '" + h.title() + "'");
-                    }
-                }
-            }
-        }
-
-        if (result.immediateActions() != null) {
-            for (var action : result.immediateActions()) {
-                if (!VALID_RISKS.contains(action.risk()))
-                    errors.add("Invalid risk: " + action.risk());
             }
         }
 

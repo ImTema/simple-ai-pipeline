@@ -1,3 +1,9 @@
 package com.simplepipeline.loganalyzer.model;
 
-public record ImmediateAction(String action, String risk, String reasoning) {}
+import org.springframework.ai.tool.annotation.ToolParam;
+
+public record ImmediateAction(
+        @ToolParam(description = "Mitigation action to take immediately") String action,
+        @ToolParam(description = "Risk level of performing this action") Risk risk,
+        @ToolParam(description = "Why this action is recommended and what to watch for") String reasoning
+) {}

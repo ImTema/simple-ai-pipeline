@@ -3,14 +3,16 @@ package com.simplepipeline.declinemapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.simplepipeline.declinemapper.model.CodeMapping;
+import com.simplepipeline.declinemapper.model.Confidence;
 import com.simplepipeline.declinemapper.model.MappingResult;
 import com.simplepipeline.declinemapper.model.MappingSummary;
 import com.simplepipeline.declinemapper.model.ProviderCode;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.util.json.schema.JsonSchemaGenerator;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,14 +21,8 @@ public class DeclineMapperService {
 
     private static final int MAX_RETRIES = 4;
 
-    private static final Set<String> VALID_CATEGORIES = Set.of(
-            "SYSTEM_MALFUNCTION", "COMMON_DECLINE", "ANTIFRAUD",
-            "BADDATAPROVIDED", "CANCELLEDBYCUSTOMER", "PROVIDER_LIMIT", "AUTHENTICATION_FAILURE"
-    );
-    private static final Set<String> VALID_RETRY_STRATEGIES = Set.of(
-            "no_retry", "retry_with_backoff", "retry_after_fix", "no_action"
-    );
-    private static final Set<String> VALID_CONFIDENCE = Set.of("high", "medium", "low");
+    private static final String PROVIDER_CODE_SCHEMA = JsonSchemaGenerator.generateForType(ProviderCode[].class);
+    private static final String CODE_MAPPING_SCHEMA = JsonSchemaGenerator.generateForType(CodeMapping[].class);
 
     private static final String TAXONOMY = """
             SYSTEM_MALFUNCTION     - Internal system error, provider infrastructure failure. Retryable with backoff.
@@ -57,10 +53,8 @@ public class DeclineMapperService {
     private List<ProviderCode> parse(String rawDoc) {
         String prompt = """
                 Extract all error/decline codes from the following provider API documentation.
-                Return ONLY a valid JSON array. Each element must have exactly these fields:
-                  "code": the code string (e.g. "QP-001")
-                  "name": the short name or title
-                  "description": the explanation text
+                Return ONLY a valid JSON array matching this schema:
+                """ + PROVIDER_CODE_SCHEMA + """
 
                 Documentation:
                 """ + rawDoc;
@@ -70,8 +64,8 @@ public class DeclineMapperService {
                 Error: %s
                 Previous response: %s
 
-                Return ONLY a valid JSON array of objects with fields: code, name, description.
-                """;
+                Return ONLY a valid JSON array matching this schema:
+                """ + PROVIDER_CODE_SCHEMA;
 
         return callWithRetry(prompt, correctionTemplate, response -> {
             List<ProviderCode> result = objectMapper.readValue(extractJson(response), new TypeReference<>() {});
@@ -86,10 +80,10 @@ public class DeclineMapperService {
         sb.append("Internal decline taxonomy (map each provider code to exactly one of these):\n");
         sb.append(TAXONOMY);
         sb.append("\nRetry strategies:\n");
-        sb.append("  no_retry           - terminal error, do not retry\n");
-        sb.append("  retry_with_backoff - transient error, retry with exponential backoff\n");
-        sb.append("  retry_after_fix    - retryable only after merchant/customer fixes something\n");
-        sb.append("  no_action          - not a real error (e.g. idempotency guard)\n");
+        sb.append("  NO_RETRY           - terminal error, do not retry\n");
+        sb.append("  RETRY_WITH_BACKOFF - transient error, retry with exponential backoff\n");
+        sb.append("  RETRY_AFTER_FIX    - retryable only after merchant/customer fixes something\n");
+        sb.append("  NO_ACTION          - not a real error (e.g. idempotency guard)\n");
         sb.append("\nProvider error codes to map:\n");
         for (ProviderCode code : codes) {
             sb.append(String.format("  %s \"%s\" - %s%n", code.code(), code.name(), code.description()));
@@ -99,22 +93,18 @@ public class DeclineMapperService {
 
     // Stage 3: LLM maps each code to a category, confidence, retry strategy, and reasoning
     private List<CodeMapping> map(String enrichedPrompt, List<ProviderCode> originalCodes) {
-        Set<String> expectedCodes = new java.util.HashSet<>();
+        var expectedCodes = new HashSet<String>();
         for (ProviderCode c : originalCodes) expectedCodes.add(c.code());
 
         String prompt = """
                 You are a payment integration expert. Map each provider error code to our internal decline taxonomy.
 
                 Rules:
-                - internal_category must be exactly one of the 7 values in the taxonomy
-                - confidence must be "high", "medium", or "low"
-                - retry_strategy must be exactly one of the 4 values listed
-                - review_reason must explain ambiguity if confidence is "low", otherwise null
+                - review_reason must explain ambiguity if confidence is LOW, otherwise null
                 - Every code in the list must appear in the output
 
-                Return ONLY a valid JSON array. Each element must have exactly these fields:
-                  "provider_code", "provider_message", "internal_category", "confidence",
-                  "reasoning", "retry_strategy", "review_reason"
+                Return ONLY a valid JSON array matching this schema:
+                """ + CODE_MAPPING_SCHEMA + """
 
                 """ + enrichedPrompt;
 
@@ -122,27 +112,17 @@ public class DeclineMapperService {
                 Your previous response had validation errors: %s
                 Previous response: %s
 
-                Fix all issues and return ONLY a valid JSON array with the same fields.
-                Every provider code must appear. Use only the allowed enum values.
-                """;
+                Fix all issues and return ONLY a valid JSON array matching this schema:
+                """ + CODE_MAPPING_SCHEMA;
 
         return callWithRetry(prompt, correctionTemplate, response -> {
             List<CodeMapping> mappings = objectMapper.readValue(extractJson(response), new TypeReference<>() {});
 
-            List<String> errors = new java.util.ArrayList<>();
-            Set<String> mappedCodes = new java.util.HashSet<>();
-            for (CodeMapping m : mappings) {
-                mappedCodes.add(m.providerCode());
-                if (!VALID_CATEGORIES.contains(m.internalCategory()))
-                    errors.add("Invalid category '" + m.internalCategory() + "' for code " + m.providerCode());
-                if (!VALID_RETRY_STRATEGIES.contains(m.retryStrategy()))
-                    errors.add("Invalid retry strategy '" + m.retryStrategy() + "' for code " + m.providerCode());
-                if (!VALID_CONFIDENCE.contains(m.confidence()))
-                    errors.add("Invalid confidence '" + m.confidence() + "' for code " + m.providerCode());
-            }
+            var mappedCodes = new HashSet<String>();
+            var errors = new java.util.ArrayList<String>();
+            for (CodeMapping m : mappings) mappedCodes.add(m.providerCode());
             for (String expected : expectedCodes) {
-                if (!mappedCodes.contains(expected))
-                    errors.add("Missing code: " + expected);
+                if (!mappedCodes.contains(expected)) errors.add("Missing code: " + expected);
             }
             if (!errors.isEmpty()) throw new IllegalStateException(String.join("; ", errors));
             return mappings;
@@ -162,13 +142,13 @@ public class DeclineMapperService {
                         m.confidence(),
                         m.reasoning(),
                         m.retryStrategy(),
-                        m.needsHumanReview() || "low".equals(m.confidence()),
+                        m.needsHumanReview() || m.confidence() == Confidence.LOW,
                         m.reviewReason()
                 ))
                 .toList();
 
         int totalCodes = codes.size();
-        int highConfidence = (int) finalMappings.stream().filter(m -> "high".equals(m.confidence())).count();
+        int highConfidence = (int) finalMappings.stream().filter(m -> m.confidence() == Confidence.HIGH).count();
         int needsReview = (int) finalMappings.stream().filter(CodeMapping::needsHumanReview).count();
         int unmapped = totalCodes - finalMappings.size();
 
@@ -195,11 +175,9 @@ public class DeclineMapperService {
 
     private String extractJson(String response) {
         String trimmed = response.strip();
-        // Strip markdown code fences if present
         Pattern fence = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```");
         Matcher matcher = fence.matcher(trimmed);
         if (matcher.find()) return matcher.group(1).strip();
-        // Find first [ or { to handle any leading text
         int start = Math.min(
                 trimmed.indexOf('[') == -1 ? Integer.MAX_VALUE : trimmed.indexOf('['),
                 trimmed.indexOf('{') == -1 ? Integer.MAX_VALUE : trimmed.indexOf('{')

@@ -1,3 +1,9 @@
 package com.simplepipeline.loganalyzer.model;
 
-public record NextStep(String action, String tool, String detail) {}
+import org.springframework.ai.tool.annotation.ToolParam;
+
+public record NextStep(
+        @ToolParam(description = "Description of the investigation action") String action,
+        @ToolParam(description = "Infrastructure tool to use for this step") Tool tool,
+        @ToolParam(description = "Specific query, dashboard, or command to execute") String detail
+) {}

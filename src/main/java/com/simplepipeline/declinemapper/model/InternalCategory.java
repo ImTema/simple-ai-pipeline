@@ -1,0 +1,6 @@
+package com.simplepipeline.declinemapper.model;
+
+public enum InternalCategory {
+    SYSTEM_MALFUNCTION, COMMON_DECLINE, ANTIFRAUD, BADDATAPROVIDED,
+    CANCELLEDBYCUSTOMER, PROVIDER_LIMIT, AUTHENTICATION_FAILURE
+}
