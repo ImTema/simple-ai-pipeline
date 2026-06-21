@@ -28,14 +28,14 @@ Input: plain-text provider API docs. Output: structured mapping with confidence,
 
 #### Internal Decline Taxonomy (fixed, 7 categories)
 
-| Category | Retryable |
-|----------|-----------|
-| `SYSTEM_MALFUNCTION` | Yes (with backoff) |
-| `COMMON_DECLINE` | Depends on sub-code |
-| `ANTIFRAUD` | No |
-| `BADDATAPROVIDED` | No |
-| `CANCELLEDBYCUSTOMER` | No |
-| `PROVIDER_LIMIT` | Yes (after cooldown) |
+| Category                 | Retryable |
+|--------------------------|-----------|
+| `SYSTEM_MALFUNCTION`     | Yes (with backoff) |
+| `COMMON_DECLINE`         | Depends on sub-code |
+| `ANTIFRAUD`              | No |
+| `BAD_DATA_PROVIDED`      | No |
+| `CANCELLED_BY_CUSTOMER`  | No |
+| `PROVIDER_LIMIT`         | Yes (after cooldown) |
 | `AUTHENTICATION_FAILURE` | No |
 
 ---

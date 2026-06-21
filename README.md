@@ -1,32 +1,32 @@
 # Simple Pipeline
 
-Minimal AI agent service for payment integration engineers. Two features, one Spring Boot app, zero boilerplate.
+Minimal AI agent service for payment integration engineers. Two LLM-powered pipelines in a single Spring Boot app.
 
 ---
 
-## How to run
+## Stack
 
-### Prerequisites
+- **Java 21** + Spring Boot + Spring AI
+- **Docker** — runs the app and a local Ollama instance
+- **Testcontainers** — spins up a pre-built Ollama image with `phi4-mini` for eval tests
 
-- Docker + Docker Compose, **or** Java 21 + Maven
+---
 
-### With Docker Compose
+## Prerequisites
+
+Docker must be running. The app expects an Ollama instance with `phi4-mini` pulled, or any OpenAI-compatible endpoint via env vars:
 
 ```bash
+export AI_BASE_URL=https://api.openai.com   # default: http://localhost:11434
 export AI_API_KEY=your_key_here
-# Optional overrides:
-# export AI_BASE_URL=https://api.openai.com   (any OpenAI-compatible endpoint)
-# export AI_MODEL=gpt-4o
-
-docker compose up --build
+export AI_MODEL=gpt-4o                      # default: phi4-mini
 ```
 
-The service starts on port `8083`.
-
-### Without Docker (local Maven)
+To run locally with Ollama:
 
 ```bash
-export AI_API_KEY=your_key_here
+docker run -d -p 11434:11434 ollama/ollama
+docker exec -it <container> ollama pull phi4-mini
 ./mvnw spring-boot:run
 ```
 
@@ -34,93 +34,43 @@ export AI_API_KEY=your_key_here
 
 ## Endpoints
 
-Both endpoints accept `text/plain` and return JSON. Responses take **10–30 seconds** — the request blocks while the LLM pipeline runs.
-
-### Decline Code Mapper
+Both accept `text/plain`, return JSON, and block for **10–30 seconds** while the pipeline runs.
 
 ```bash
-curl -X POST http://localhost:8083/decline-mapper/analyze \
-  -H "Content-Type: text/plain" \
-  --data-binary @your_provider_docs.txt
-```
-
-### Log Analyzer
-
-```bash
-curl -X POST http://localhost:8083/log-analyzer/analyze \
-  -H "Content-Type: text/plain" \
-  --data-binary @your_log_snippet.txt
+curl -X POST http://localhost:8083/decline-mapper/analyze -H "Content-Type: text/plain" --data-binary @docs.txt
+curl -X POST http://localhost:8083/log-analyzer/analyze  -H "Content-Type: text/plain" --data-binary @logs.txt
 ```
 
 ---
 
-## Agent structure
+## Pipeline structure
 
-Each feature runs a four-stage pipeline inside its service class. Stages are private methods — no framework, no abstractions.
+Each request runs a four-stage pipeline. Stages alternate between LLM and Java:
 
-### Decline Code Mapper (`DeclineMapperService`)
+| Stage | Who | Decline Mapper | Log Analyzer |
+|-------|-----|----------------|--------------|
+| **parse** | LLM | Extract `(code, name, description)` tuples from raw docs | Extract signals: incident ID, error types, components, timestamps |
+| **enrich** | Java | Inject taxonomy + retry strategy definitions | Inject 3-layer adapter architecture + infrastructure context |
+| **map / diagnose** | LLM | Map each code to category, confidence, retry strategy | Generate full incident analysis: hypotheses, immediate actions |
+| **assemble / review** | Java | Compute `needs_human_review` and summary counts | Validate enums; fill `incident_id` from signals if LLM left it null |
 
-| Stage | Who | What |
-|-------|-----|------|
-| **parse** | LLM | Extracts `(code, name, description)` tuples from raw documentation |
-| **enrich** | Java | Builds enriched prompt with the full taxonomy and retry strategy definitions |
-| **map** | LLM | Maps each code to a category, confidence level, retry strategy, and reasoning |
-| **assemble** | Java | Computes `needs_human_review` (= confidence is `low`) and all summary counts |
+Each LLM stage retries up to 4 times with a targeted correction prompt before failing with HTTP 500.
 
-The LLM never counts. `total_codes`, `high_confidence`, `needs_review`, `unmapped` are computed from the mappings array.
+---
 
-### Log Analyzer (`LogAnalyzerService`)
+## Docs
 
-| Stage | Who | What |
-|-------|-----|------|
-| **parse** | LLM | Extracts signals: incident ID, error types, affected components, timestamps |
-| **enrich** | Java | Injects the 3-layer adapter architecture and infrastructure tool context |
-| **diagnose** | LLM | Generates the full incident analysis: category, summary, hypotheses, immediate actions |
-| **review** | Java | Validates all enum values and tool names; fills `incident_id` from parsed signals if absent |
-
-### Retry strategy
-
-Each LLM stage retries up to **4 times** with a targeted correction prompt on failure (invalid JSON, wrong enum value, missing codes, hallucinated tool names). After 4 attempts the request fails with HTTP 500.
+- `CONTEXT.md` — domain glossary and API contract
+- `docs/adr/` — architecture decisions and recorded trade-offs
 
 ---
 
 ## Testing
 
-Eval tests run the full LLM pipeline against sample inputs and assert on structured enum fields. Sample inputs and expected fixtures are in `src/test/resources/samples/`.
+Eval tests run the full pipeline against real sample inputs using a pre-built Ollama Docker image with `phi4-mini` — no API key needed, Docker must be running.
 
 ```bash
 ./mvnw test -Dgroups=eval
 ```
 
-No API key required — tests spin up a local Ollama container (Docker must be running) and pull `phi3-mini-reasoning` automatically.
-
-| Incident | Input file | Expected `faultLayer` | Expected `severity` | Expected `blastRadius` |
-|----------|------------|----------------------|--------------------|-----------------------|
-| INC-201 | `inc-201-opay.txt` | `EXTERNAL` | `HIGH` | `SINGLE_ADAPTER` |
-| INC-202 | `inc-202-signature.txt` | `CORE` | `HIGH` | `SINGLE_ADAPTER` |
-| INC-203 | `inc-203-halopesa.txt` | `INFRASTRUCTURE` | `HIGH` | `SINGLE_ADAPTER` |
-| INC-204 | `inc-204-terminal-link.txt` | `INFRASTRUCTURE` | `MEDIUM` | `MULTI_ADAPTER` |
-| INC-205 | `inc-205-pool.txt` | `SDK` | `HIGH` | `SINGLE_ADAPTER` |
-
-The QuickPay Global provider docs (`quickpay-global.txt`) drive the `DeclineMapperEvalTest`, asserting 20 unambiguous code mappings. Ambiguous codes (QP-001, QP-005, QP-008, QP-009, QP-010, QP-401) are excluded from strict assertions.
-
----
-
-## Trade-offs
-
-### What was simplified
-
-- **Sync over async** — the POST blocks until the pipeline finishes. An on-call engineer staring at a terminal
-  for 20 seconds is fine; a production-grade system would need async with polling (see ADR-0001).
-- **In-process only** — no persistence, no job queue. Results exist only in the HTTP response.
-- **Single retry budget** — both services share the same 4-retry limit per stage. A smarter system would
-  tune retry counts per stage based on observed failure rates.
-
-### What production would add
-
-- **Async + idempotency key** — submit returns a job ID, client polls for result. The idempotency key prevents
-  re-processing the same log snippet or documentation if the client retries due to a network timeout.
-- **Streaming progress** — SSE or WebSocket to show which stage is currently running (parse → enrich → diagnose).
-- **Persistent results** — store completed analyses so engineers can reference past diagnoses.
-- **Real tool integrations** — fetch live ELK queries or Grafana snapshots instead of suggesting them.
-- **Historical incident correlation** — compare new signals against past incidents to surface known patterns.
+Sample inputs and expected fixtures are in `src/test/resources/samples/`. Tests assert on structured enum fields (`faultLayer`, `severity`, `blastRadius` for log analysis; category mappings for decline codes).
