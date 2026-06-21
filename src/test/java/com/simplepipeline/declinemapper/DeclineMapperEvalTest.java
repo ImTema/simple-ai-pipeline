@@ -1,12 +1,12 @@
 package com.simplepipeline.declinemapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.simplepipeline.OllamaEvalBase;
 import com.simplepipeline.declinemapper.model.CodeMapping;
 import com.simplepipeline.declinemapper.model.MappingResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -16,9 +16,8 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
 @Tag("eval")
-class DeclineMapperEvalTest {
+class DeclineMapperEvalTest extends OllamaEvalBase {
 
     record Expectation(String providerCode, String internalCategory, String retryStrategy, Boolean needsHumanReview) {}
 

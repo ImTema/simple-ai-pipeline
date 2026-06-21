@@ -1,12 +1,12 @@
 package com.simplepipeline.loganalyzer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.simplepipeline.OllamaEvalBase;
 import com.simplepipeline.loganalyzer.model.IncidentAnalysis;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -15,9 +15,8 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
 @Tag("eval")
-class LogAnalyzerEvalTest {
+class LogAnalyzerEvalTest extends OllamaEvalBase {
 
     record Expectation(String file, String faultLayer, String severity, String blastRadius) {}
 

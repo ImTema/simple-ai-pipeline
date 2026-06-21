@@ -5,4 +5,4 @@ spring:
       base-url: http://127.0.0.1:8080
       chat:
         options:
-          model: gemma-3
+          model: phi4-mini

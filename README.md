@@ -89,9 +89,10 @@ Each LLM stage retries up to **4 times** with a targeted correction prompt on fa
 Eval tests run the full LLM pipeline against sample inputs and assert on structured enum fields. Sample inputs and expected fixtures are in `src/test/resources/samples/`.
 
 ```bash
-export AI_API_KEY=your_key_here
 ./mvnw test -Dgroups=eval
 ```
+
+No API key required — tests spin up a local Ollama container (Docker must be running) and pull `phi3-mini-reasoning` automatically.
 
 | Incident | Input file | Expected `faultLayer` | Expected `severity` | Expected `blastRadius` |
 |----------|------------|----------------------|--------------------|-----------------------|
