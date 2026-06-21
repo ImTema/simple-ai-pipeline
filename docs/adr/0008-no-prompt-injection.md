@@ -11,7 +11,7 @@ redirect the model's output.
 
 ## Decision
 
-No system prompt and no prompt-injection guard.
+No prompt-injection guard.
 
 ## Why
 
