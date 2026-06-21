@@ -1,0 +1,7 @@
+[
+  { "file": "inc-201-opay.txt",         "faultLayer": "EXTERNAL",       "severity": "HIGH",   "blastRadius": "SINGLE_ADAPTER" },
+  { "file": "inc-202-signature.txt",    "faultLayer": "CORE",           "severity": "HIGH",   "blastRadius": "SINGLE_ADAPTER" },
+  { "file": "inc-203-halopesa.txt",     "faultLayer": "INFRASTRUCTURE", "severity": "HIGH",   "blastRadius": "SINGLE_ADAPTER" },
+  { "file": "inc-204-terminal-link.txt","faultLayer": "INFRASTRUCTURE", "severity": "MEDIUM", "blastRadius": "MULTI_ADAPTER"  },
+  { "file": "inc-205-pool.txt",         "faultLayer": "SDK",            "severity": "HIGH",   "blastRadius": "SINGLE_ADAPTER" }
+]

@@ -1,0 +1,22 @@
+[
+  { "providerCode": "QP-002", "internalCategory": "COMMON_DECLINE",         "retryStrategy": "NO_RETRY"           },
+  { "providerCode": "QP-003", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-004", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-006", "internalCategory": "ANTIFRAUD",              "retryStrategy": "NO_RETRY"           },
+  { "providerCode": "QP-007", "internalCategory": "AUTHENTICATION_FAILURE", "retryStrategy": "NO_RETRY",           "needsHumanReview": true },
+  { "providerCode": "QP-100", "internalCategory": "SYSTEM_MALFUNCTION",     "retryStrategy": "RETRY_WITH_BACKOFF" },
+  { "providerCode": "QP-101", "internalCategory": "SYSTEM_MALFUNCTION",     "retryStrategy": "RETRY_WITH_BACKOFF" },
+  { "providerCode": "QP-102", "internalCategory": "SYSTEM_MALFUNCTION",     "retryStrategy": "RETRY_WITH_BACKOFF" },
+  { "providerCode": "QP-103", "internalCategory": "PROVIDER_LIMIT",         "retryStrategy": "RETRY_WITH_BACKOFF" },
+  { "providerCode": "QP-200", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-201", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-202", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-203", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-204", "internalCategory": "BAD_DATA_PROVIDED",      "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-300", "internalCategory": "AUTHENTICATION_FAILURE", "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-301", "internalCategory": "AUTHENTICATION_FAILURE", "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-302", "internalCategory": "AUTHENTICATION_FAILURE", "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-303", "internalCategory": "AUTHENTICATION_FAILURE", "retryStrategy": "RETRY_AFTER_FIX"   },
+  { "providerCode": "QP-400", "internalCategory": "CANCELLED_BY_CUSTOMER",  "retryStrategy": "NO_RETRY"           },
+  { "providerCode": "QP-402", "internalCategory": "CANCELLED_BY_CUSTOMER",  "retryStrategy": "NO_RETRY"           }
+]

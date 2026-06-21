@@ -86,15 +86,22 @@ Each LLM stage retries up to **4 times** with a targeted correction prompt on fa
 
 ## Testing
 
-Tested against the five incidents from the task specification. Sample inputs are in `docs/samples/`.
+Eval tests run the full LLM pipeline against sample inputs and assert on structured enum fields. Sample inputs and expected fixtures are in `src/test/resources/samples/`.
 
-| Incident | Input file | Expected category |
-|----------|------------|-------------------|
-| INC-201 | `inc-201-opay.txt` | External provider degradation |
-| INC-202 | `inc-202-signature.txt` | Internal configuration / credential issue |
-| INC-203 | `inc-203-halopesa.txt` | Infrastructure failure (DB/queue) |
-| INC-204 | `inc-204-terminal-link.txt` | Routing / terminal configuration issue |
-| INC-205 | `inc-205-pool.txt` | Connection pool / resource exhaustion |
+```bash
+export AI_API_KEY=your_key_here
+./mvnw test -Dgroups=eval
+```
+
+| Incident | Input file | Expected `faultLayer` | Expected `severity` | Expected `blastRadius` |
+|----------|------------|----------------------|--------------------|-----------------------|
+| INC-201 | `inc-201-opay.txt` | `EXTERNAL` | `HIGH` | `SINGLE_ADAPTER` |
+| INC-202 | `inc-202-signature.txt` | `CORE` | `HIGH` | `SINGLE_ADAPTER` |
+| INC-203 | `inc-203-halopesa.txt` | `INFRASTRUCTURE` | `HIGH` | `SINGLE_ADAPTER` |
+| INC-204 | `inc-204-terminal-link.txt` | `INFRASTRUCTURE` | `MEDIUM` | `MULTI_ADAPTER` |
+| INC-205 | `inc-205-pool.txt` | `SDK` | `HIGH` | `SINGLE_ADAPTER` |
+
+The QuickPay Global provider docs (`quickpay-global.txt`) drive the `DeclineMapperEvalTest`, asserting 20 unambiguous code mappings. Ambiguous codes (QP-001, QP-005, QP-008, QP-009, QP-010, QP-401) are excluded from strict assertions.
 
 ---
 
