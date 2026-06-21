@@ -192,6 +192,7 @@ public class LogAnalyzerService {
             try {
                 log.debug("[llm] attempt={}", attempt + 1);
                 lastResponse = chatClient.prompt(prompt).call().content();
+                log.debug("[llm] lastResponse={}", lastResponse);
                 return parser.parse(lastResponse);
             } catch (Exception e) {
                 lastError = e;
